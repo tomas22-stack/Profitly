@@ -20,13 +20,16 @@ def add_product_row(ws, row, name, cat, precio, costo, comision, packaging, envi
 def extend_table(ws, tablename, new_ref):
     ws.tables[tablename].ref = new_ref
 
-def add_sale_row(ws, row, fecha, producto, cantidad, canal="Local", descuento=0, otros_costos=0):
+def add_sale_row(ws, row, fecha, producto, cantidad, precio, comision=0, canal="Local", descuento=0, otros_costos=0):
+    # precio/comision are now plain typed values, not an auto-fill lookup
+    # (docs/05-qa-results.md §5) -- the test passes them explicitly here,
+    # standing in for what a real user would type after checking Productos.
     ws[f"B{row}"] = fecha
     ws[f"C{row}"] = producto
     ws[f"D{row}"] = cantidad
-    ws[f"E{row}"] = f'=IFERROR(INDEX(tbl_Productos[Precio de venta],MATCH(C{row},tbl_Productos[Producto],0)),"")'
+    ws[f"E{row}"] = precio
     ws[f"F{row}"] = canal
-    ws[f"G{row}"] = f'=IFERROR(INDEX(tbl_Productos[Comisión %],MATCH(C{row},tbl_Productos[Producto],0)),"")'
+    ws[f"G{row}"] = comision
     ws[f"H{row}"] = descuento
     ws[f"I{row}"] = otros_costos
     ws[f"J{row}"] = f'=IF(C{row}="","",(D{row}*E{row})-H{row})'
@@ -85,7 +88,7 @@ def mut_one(wb):
     add_product_row(wsP, 13, "Producto Unico", "General", 1000, 0, 0, 0, 0, 0, 0)
     extend_table(wsP, "tbl_Productos", "B12:P13")
     wsV = wb["🛒 Ventas"]
-    add_sale_row(wsV, 10, TODAY, "Producto Unico", 1)
+    add_sale_row(wsV, 10, TODAY, "Producto Unico", 1, precio=1000, comision=0)
     extend_table(wsV, "tbl_Ventas", "B9:L10")
 run_test("B_one_product_one_sale", mut_one,
     {"📦 Productos": ["K13", "L13", "M13"], "🏠 Inicio": ["B10", "F10", "J10"]},
@@ -102,9 +105,9 @@ def mut_multi(wb):
     extend_table(wsP, "tbl_Productos", "B12:P16")
     wsV = wb["🛒 Ventas"]
     wsV.unmerge_cells("B12:P12")  # the "sin ventas" empty-state banner sits here; test writes over it
-    add_sale_row(wsV, 10, TODAY, "Producto A (vendido)", 3, descuento=200)  # discount case
-    add_sale_row(wsV, 11, TODAY, "Producto C (margen bajo)", 1)
-    add_sale_row(wsV, 12, TODAY, "Producto D (margen negativo)", 1)
+    add_sale_row(wsV, 10, TODAY, "Producto A (vendido)", 3, precio=1000, comision=0.05, descuento=200)  # discount case
+    add_sale_row(wsV, 11, TODAY, "Producto C (margen bajo)", 1, precio=1000, comision=0)
+    add_sale_row(wsV, 12, TODAY, "Producto D (margen negativo)", 1, precio=500, comision=0)
     extend_table(wsV, "tbl_Ventas", "B9:L12")
 run_test("C_multi_margin_cases", mut_multi,
     {"📦 Productos": ["M13", "M14", "N14", "M15", "P15", "M16", "P16"],
@@ -125,12 +128,10 @@ def mut_price_change(wb):
     add_product_row(wsP, 13, "Producto Precio", "General", 1000, 400, 0, 0, 0, 0, 0)
     extend_table(wsP, "tbl_Productos", "B12:P13")
     wsV = wb["🛒 Ventas"]
-    add_sale_row(wsV, 10, TODAY, "Producto Precio", 1)
+    add_sale_row(wsV, 10, TODAY, "Producto Precio", 1, precio=1000, comision=0)
     extend_table(wsV, "tbl_Ventas", "B9:L10")
-    # Now change the product's price -- the sale's own Precio de venta cell
-    # is a static value once written (E10 is a formula only until overwritten;
-    # here it was never manually overridden, so per Ventas' own design (Phase 3
-    # §3.2) it re-evaluates -- this test documents that behavior explicitly.
+    # Now change the product's price -- E10 is a plain typed value (docs/05-qa-results.md
+    # §5's fix), not a lookup formula, so it must NOT change when this does.
     wsP["D13"] = 2000
 run_test("E_price_change_after_sale", mut_price_change,
     {"🛒 Ventas": ["E10", "J10"], "📦 Productos": ["D13"]},
@@ -142,7 +143,7 @@ def mut_large(wb):
     add_product_row(wsP, 13, "Producto Grande", "General", 15000000.50, 6234567.25, 0.0825, 1234.10, 0, 0, 0)
     extend_table(wsP, "tbl_Productos", "B12:P13")
     wsV = wb["🛒 Ventas"]
-    add_sale_row(wsV, 10, TODAY, "Producto Grande", 9999)
+    add_sale_row(wsV, 10, TODAY, "Producto Grande", 9999, precio=15000000.50, comision=0.0825)
     extend_table(wsV, "tbl_Ventas", "B9:L10")
 run_test("F_large_decimal_numbers", mut_large,
     {"📦 Productos": ["K13", "L13", "M13"], "🛒 Ventas": ["J10", "L10"]},
@@ -160,7 +161,7 @@ def mut_sim_data(wb):
     add_product_row(wsP, 13, "Producto Sim", "General", 1000, 400, 0, 0, 0, 0, 0)
     extend_table(wsP, "tbl_Productos", "B12:P13")
     wsV = wb["🛒 Ventas"]
-    add_sale_row(wsV, 10, TODAY, "Producto Sim", 10)
+    add_sale_row(wsV, 10, TODAY, "Producto Sim", 10, precio=1000, comision=0)
     extend_table(wsV, "tbl_Ventas", "B9:L10")
     wsS = wb["🔬 Simulador"]
     wsS["D16"] = 0.10  # Δ Precio +10%

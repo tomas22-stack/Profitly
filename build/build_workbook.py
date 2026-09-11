@@ -337,9 +337,15 @@ def style_col(ws, col_letter, header_row, data_row, category, numfmt=None):
         d.number_format = numfmt
 
 def legend(ws, row):
+    # Only 2 of the 3 states docs/04-ux-ui.md #1.3 defines are ever used on a
+    # real table in this workbook (no column ended up in the "auto-filled,
+    # editable" category -- Ventas' Precio de venta/Comisión % moved out of
+    # it per docs/05-qa-results.md §5), so the legend only shows those two:
+    # showing an unused third state would invite the user to look for a cell
+    # that isn't there.
     merge(ws, f"B{row}:P{row}")
     c = setc(ws, f"B{row}",
-             "⬜ Vos cargás esto    ·    🔸 Profitly lo completa (lo podés cambiar)    ·    🔒 Profitly lo calculó",
+             "⬜ Vos cargás esto    ·    🔒 Profitly lo calculó",
              f=F(9, italic=True, color=C_MUTED), al=ALIGN_L)
     ws.row_dimensions[row].height = 16
 
@@ -464,9 +470,9 @@ vent_cols = [
     ("B", "Fecha", "input", FMT_DATE),
     ("C", "Producto", "input", None),
     ("D", "Cantidad", "input", FMT_INT),
-    ("E", "Precio de venta", "autofill", FMT_CURRENCY),
+    ("E", "Precio de venta", "input", FMT_CURRENCY),
     ("F", "Canal", "input", None),
-    ("G", "Comisión %", "autofill", FMT_PCT),
+    ("G", "Comisión %", "input", FMT_PCT),
     ("H", "Descuento", "input", FMT_CURRENCY),
     ("I", "Otros costos", "input", FMT_CURRENCY),
     ("J", "Venta total", "calc", FMT_CURRENCY),
@@ -479,14 +485,22 @@ for cl, header, cat, nf in vent_cols:
     ws.column_dimensions[cl].width = 16
 
 r = DATA_ROW_V
-setc(ws, f"E{r}", f'=IFERROR(INDEX(tbl_Productos[Precio de venta],MATCH(C{r},tbl_Productos[Producto],0)),"")')
-tooltip(ws, f"E{HEADER_ROW_V}", "Precio de venta", "Se completa solo cuando elegís un producto — lo podés cambiar.")
-setc(ws, f"G{r}", f'=IFERROR(INDEX(tbl_Productos[Comisión %],MATCH(C{r},tbl_Productos[Producto],0)),"")')
-tooltip(ws, f"G{HEADER_ROW_V}", "Comisión %", "Se completa solo cuando elegís un producto — lo podés cambiar.")
+# Plain required inputs, not an auto-fill lookup (docs/05-qa-results.md §5): a
+# live lookup here would keep recomputing forever, so editing a product's price
+# later would silently rewrite the recorded price/revenue of every past sale of
+# that product. Typing the price actually charged at the time of sale is the
+# only way to guarantee a historical sale never changes after the fact.
+tooltip(ws, f"E{HEADER_ROW_V}", "Precio de venta",
+        "Ingresá el precio al que vendiste — fijate el precio actual en 📦 Productos si querés usarlo de referencia.")
+tooltip(ws, f"G{HEADER_ROW_V}", "Comisión %",
+        "Ingresá la comisión de esta venta — fijate la comisión del producto en 📦 Productos si querés usarla de referencia.")
 # Blank-row guard: an unfilled starter/new row (no Producto chosen yet) must render
-# blank, not #VALUE! (arithmetic against E's "" autofill result) nor a false
-# "Producto no encontrado" (that message is reserved for a product genuinely
-# removed from the catalog after being sold, not an empty row awaiting entry).
+# blank, not a false "Producto no encontrado" (that message is reserved for a
+# product genuinely removed from the catalog after being sold, not an empty row
+# awaiting entry). E/G being plain numeric inputs means D*E is safe even when E
+# is blank (Excel treats a blank numeric cell as 0), so only K/L need the guard
+# for their MATCH-based lookups -- J is guarded too, purely to keep an empty row
+# visually blank rather than showing a distracting "$0".
 setc(ws, f"J{r}", f'=IF(C{r}="","",(D{r}*E{r})-H{r})')
 setc(ws, f"K{r}", f'=IF(C{r}="","",IFERROR(INDEX(tbl_Productos[Costo real de venta],MATCH(C{r},tbl_Productos[Producto],0))*D{r},Txt_ProductoNoEncontrado))')
 setc(ws, f"L{r}", f'=IF(C{r}="","",IFERROR(J{r}-K{r}-I{r},Txt_ProductoNoEncontrado))')
@@ -1524,6 +1538,8 @@ wsP.add_data_validation(dv_unique)
 wsV = wb[SH_VENTAS]
 dv_date_max_today(wsV, f"B{DATA_ROW_V}", MSG_DATE)
 dv_whole_min(wsV, f"D{DATA_ROW_V}", 1, MSG_QTY)
+dv_decimal_min(wsV, f"E{DATA_ROW_V}", 0, MSG_NUM_GE0)
+dv_decimal_between(wsV, f"G{DATA_ROW_V}", 0, 1, MSG_PCT)
 dv_decimal_min(wsV, f"H{DATA_ROW_V}", 0, MSG_NUM_GE0)
 dv_decimal_min(wsV, f"I{DATA_ROW_V}", 0, MSG_NUM_GE0)
 
@@ -1582,7 +1598,8 @@ for cl in "BCDEFGHIJ":
     unlock(wb[SH_PRODUCTOS], f"{cl}{DATA_ROW_P}")
 protect_sheet(wb[SH_PRODUCTOS])
 
-# Ventas: unlock B,C,D,F,H,I (required) and E,G (autofill, still editable)
+# Ventas: unlock all input columns B-I (E,G are now plain required inputs, not
+# autofill -- see docs/05-qa-results.md §5)
 for cl in "BCDEFGHI":
     unlock(wb[SH_VENTAS], f"{cl}{DATA_ROW_V}")
 protect_sheet(wb[SH_VENTAS])

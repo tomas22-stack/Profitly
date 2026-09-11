@@ -73,12 +73,14 @@ Header row 11, data rows 12–511 (Sheets cap). Columns B–J are input (unchang
 
 ## 3. `tbl_Ventas` — Final Formulas
 
-Header row 7, data rows 8–5007 (Sheets cap). Columns B–J input (unchanged). Columns K–L below are final, reflecting §0.1.
+Header row 7, data rows 8–5007 (Sheets cap). Columns B–J input. Columns K–L below are final, reflecting §0.1.
+
+> **Amendment (post-build, approved):** `E` (Precio de venta) and `G` (Comisión %) were originally "auto-filled, overridable" via the lookup formulas struck through below. QA found this unsafe: a user who never retypes the auto-filled value leaves a live formula in the cell, so a later price edit in `tbl_Productos` silently rewrites that historical sale's recorded price and revenue — violating the case-19 requirement in §10 below. Approved fix: `E`/`G` are now **plain required inputs**, identical in kind to `Cantidad`/`Fecha` — no formula, no default, nothing to silently drift. Full detail: `docs/05-qa-results.md` §5.
 
 | Col | Field | Category | Excel | Google Sheets |
 |---|---|---|---|---|
-| E | Precio de venta | Auto-filled, **overridable** | `=IFERROR(INDEX(tbl_Productos[Precio de venta], MATCH([@Producto], tbl_Productos[Producto], 0)), "")` | Same formula, pre-filled per-row (not `ARRAYFORMULA` — see §1): `=IFERROR(INDEX(Productos!$D$12:$D$511, MATCH(C8, Productos!$B$12:$B$511, 0)), "")` in E8, replicated down to E5007 at build time |
-| G | Comisión % | Auto-filled, **overridable** | `=IFERROR(INDEX(tbl_Productos[Comisión %], MATCH([@Producto], tbl_Productos[Producto], 0)), "")` | `=IFERROR(INDEX(Productos!$F$12:$F$511, MATCH(C8, Productos!$B$12:$B$511, 0)), "")` in G8, replicated down |
+| E | Precio de venta | **Input** (plain, required — not auto-filled; see amendment above) | — | — |
+| G | Comisión % | **Input** (plain, required — not auto-filled; see amendment above) | — | — |
 | J | Venta total | Calc, never overridden | `=([@Cantidad]*[@Precio de venta]) - [@Descuento]` | `=ARRAYFORMULA(IF($C$8:$C$5007="", "", ($D$8:$D$5007*$E$8:$E$5007)-$H$8:$H$5007))` |
 | K | **Costo total de la venta** (new, §0.1) | Calc, guarded | `=IFERROR(INDEX(tbl_Productos[Costo real de venta], MATCH([@Producto], tbl_Productos[Producto], 0)) * [@Cantidad], Txt_ProductoNoEncontrado)` | `=ARRAYFORMULA(IF($C$8:$C$5007="", "", IFERROR(INDEX(Productos!$K$12:$K$511, MATCH($C$8:$C$5007, Productos!$B$12:$B$511, 0)) * $D$8:$D$5007, Txt_ProductoNoEncontrado)))` |
 | L | Ganancia (was K in Phase 2) | Calc, guarded | `=IFERROR([@Venta total] - [@Costo total de la venta] - [@Otros costos], Txt_ProductoNoEncontrado)` | `=ARRAYFORMULA(IF($C$8:$C$5007="", "", IFERROR($J$8:$J$5007-$K$8:$K$5007-$I$8:$I$5007, Txt_ProductoNoEncontrado)))` |

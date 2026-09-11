@@ -105,15 +105,15 @@ All four resolve to `Txt_SinProductos` / `Txt_SinDatos` when `tbl_Productos` is 
 | B | Fecha | **Input** | date, ≤ today | — |
 | C | Producto | **Input** | dropdown (`tbl_Productos[Producto]`) | — |
 | D | Cantidad | **Input** | whole number ≥ 1 | — |
-| E | Precio de venta | **Input, auto-filled** | currency ≥ 0 | default: `=IFERROR(INDEX(tbl_Productos[Precio de venta], MATCH([@Producto], tbl_Productos[Producto], 0)), "")`, editable per row |
+| E | Precio de venta | **Input** | currency ≥ 0 | — (plain input, not auto-filled — see amendment below) |
 | F | Canal | **Input** | dropdown (`Lst_Canales`) | — |
-| G | Comisión % | **Input, auto-filled** | percent 0–100 | default: `=IFERROR(INDEX(tbl_Productos[Comisión %], MATCH([@Producto], tbl_Productos[Producto], 0)), "")`, editable per row |
+| G | Comisión % | **Input** | percent 0–100 | — (plain input, not auto-filled — see amendment below) |
 | H | Descuento | **Input** | currency ≥ 0, default 0 | — |
 | I | Otros costos | **Input** | currency ≥ 0, default 0 | — |
 | J | Venta total | **Calc** (locked) | currency | `=(D*E) - H` |
 | K | Ganancia | **Calc** (locked) | currency | `=J - (IFERROR(INDEX(tbl_Productos[Costo real de venta], MATCH([@Producto], tbl_Productos[Producto], 0)), 0) * D) - I` |
 
-"Auto-filled, editable" is standard Excel Table behavior: the default formula populates the cell the moment `Producto` is chosen on a new row; typing over it (e.g., a negotiated price) replaces just that cell's formula with a static value, leaving every other row untouched.
+> **Amendment (post-build, approved):** `E`/`G` were originally specified as "auto-filled, editable" — the default formula above populates the cell the moment `Producto` is chosen, and typing over it replaces just that cell's formula with a static value. QA (build Phase 5/8) found the flaw in that design: a user who accepts the auto-filled value without retyping it leaves a **live formula** in place, so editing the product's price later silently rewrites every past sale's recorded price and revenue too — contradicting this very document's own §5 relationship rule and Phase 3's case-19 requirement. Approved fix: `E`/`G` are now **plain required inputs**, exactly like `Cantidad`/`Fecha` — no default formula, no auto-fill. This guarantees a recorded sale can never change after the fact, at the cost of the user typing (or copying) the price each time. Full detail: `docs/05-qa-results.md` §5.
 
 ### 3.3 `tbl_Gastos` — sheet `💸 Gastos`, header row 7, data from row 8
 
@@ -306,7 +306,7 @@ All list-based validations reference `_Listas` columns or `tbl_Productos[Product
 | `🏠 Inicio` | Period-selector dropdown only | Everything else (KPI cards, insights, charts) |
 | `⚙️ Configuración` | All onboarding fields (writes to `_Config`/`_Listas`) | Layout labels, instructions |
 | `📦 Productos` | `tbl_Productos` columns B–J | `tbl_Productos` columns K–O (calc), rankings block |
-| `🛒 Ventas` | `tbl_Ventas` columns B, C, D, F, H, I; **E, G unlocked but pre-filled** (editable override, not a separate locked/unlocked state — see §3.2) | `tbl_Ventas` columns J, K |
+| `🛒 Ventas` | `tbl_Ventas` columns B–I (all plain inputs, including E/G — see §3.2 amendment) | `tbl_Ventas` columns J, K |
 | `💸 Gastos` | `tbl_Gastos` columns B–F | — (no calc columns on this sheet) |
 | `🎯 Objetivos` | `tbl_Objetivos` columns B–C | Progress panel (all of `_Objetivos_Calc`'s exposed values) |
 | `🔬 Simulador` | The 5×3 scenario input cells | Baseline display + all projected/difference output cells |

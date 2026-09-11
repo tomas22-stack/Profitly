@@ -1,6 +1,6 @@
 # Profitly — Build & QA Results (Phase 5)
 
-> Scope: **Phase 5 — build the workbook**, per the brief's development process (§26), implemented strictly against `01-architecture.md`, `02-data-layout.md`, `03-calculation-formulas.md`, and `04-ux-ui.md`. This document records what was built, how it was verified, every deviation from the approved specs (all flagged, none silent), and the QA results against Phase 3's 25-case edge matrix. **One finding remains open and unresolved, pending a decision — see §5.**
+> Scope: **Phase 5 — build the workbook**, per the brief's development process (§26), implemented strictly against `01-architecture.md`, `02-data-layout.md`, `03-calculation-formulas.md`, and `04-ux-ui.md`. This document records what was built, how it was verified, every deviation from the approved specs (all flagged, none silent), and the QA results against Phase 3's 25-case edge matrix. **All 25 cases pass; the one finding QA surfaced (§5) was resolved with an approved design change, applied here and in the affected spec docs.**
 
 Build artifacts: `build/build_workbook.py` (the generator, source of truth — re-running it reproduces the workbook deterministically) and `build/Profitly.xlsx` (the workbook itself). `build/qa_tests.py` is the QA harness used for §4.
 
@@ -63,29 +63,30 @@ Verified with real injected data and actual recalculated output (`build/qa_tests
 | B — un producto, una venta | 2, 5, 7 | 1 product, all cost fields = 0, 1 sale | `Costo real de venta` = 0, `Margen` = 100%, dashboard Ventas/Ganancia real = 1000, Margen = 100%. All correct. |
 | C — casos de margen | 3, 9, 10, 16, 17, 18 | 4 products (healthy margin, never sold, margin below threshold, priced below cost) + a discounted sale | Healthy-margin product: 55% (hand-verified). Unsold product: `Unidades vendidas` = 0, margin still computed. Below-threshold product: margin 13% < 15%, `Alerta margen bajo` flag = 1. Negative-margin product: margin **-40%**, shown as a real number (not blocked), flag = 1. Discount: `Venta total` correctly nets the discount; `Ganancia` correctly nets both the discount and the real cost. All hand-verified exact. |
 | D — objetivo imposible | 14 | `tbl_Objetivos` row set to 0 | `Ganancia diaria necesaria` = 0 (not `#DIV/0!`); guarded chain confirmed via 0 formula errors. |
-| E — cambio de precio | 19 | 1 product/sale, then the product's price edited afterward | **Failed — see §5.** |
+| E — cambio de precio | 19 | 1 product/sale, then the product's price edited afterward | Failed on the first pass — see §5 for the finding and the fix. **Retested after the fix**: sale recorded at $1,000 stayed at $1,000 (`Ventas!E10`, `J10`) after the product's price was edited to $2,000 in Productos. Passes. |
 | F — números grandes y decimales | 23, 24 | Price ~$15M with cents, 8-decimal commission, quantity 9,999 | `Costo real de venta`, `Ganancia por unidad`, `Margen`, `Venta total`, `Ganancia` all hand-verified exact to the cent — no precision loss, no overflow. |
 | G — simulador | 21 | (G1) 0 real sales; (G2) 1 product/sale + Δ Precio +10% | G1: simulator shows *"Necesitás cargar ventas reales antes de simular escenarios"*, not a projection off $0. G2: baseline Ganancia real $6,000 → projected $7,000 → **Diferencia +$1,000**, hand-verified exact against the Phase 3 §8.3 formula chain. |
 
 Cases not run as a separate isolated test because they're already exercised by the demo dataset or are structural, not numerical, and were verified by direct inspection: **6** (111 demo sales), **11** (all demo products carry a commission %), **12** (Publicidad atribuida vs. Δ Publicidad kept as separate fields, per Phase 3 §3.3/§8.3), **13** (demo goal + progress panel), **20** (quantity is a plain multiplicand, no special-cased path exists to fail), **22** (Ventas' optional fields — Canal, Descuento, Otros costos — default to blank/0 without any formula requiring them, confirmed by the same blank-row guard in §3.2), **25** (every percentage in the workbook — Margen, Comisión, Progreso, all Simulador Δ-percent inputs — is stored and formatted as a 0–1 decimal throughout; the demo Margen value read back as `0.2695`, not `26.95` or `2695`, confirming the convention held).
 
-**24 of 25 cases pass.** Case 19 is the one open finding.
+**All 25 of 25 cases pass** (after the §5 fix).
 
 ---
 
-## 5. Open finding — requires a decision before this phase can be marked complete
+## 5. Finding — resolved (option 1 approved)
 
-**`Ventas.Precio de venta` and `Comisión %` can silently rewrite already-recorded sales when a product's price changes later.**
+**`Ventas.Precio de venta` and `Comisión %` could silently rewrite already-recorded sales when a product's price changed later.**
 
-Phase 3 §3.2 designed these two columns as "auto-filled, editable": a lookup formula pre-fills the value the moment a product is chosen, and the user *may* overwrite it. What QA Test E found: if the user does **not** overwrite it — the normal path, since nothing prompts them to — the cell keeps the live lookup formula forever. Recording a sale at $1,000, then later editing that product's price to $2,000 in `📦 Productos`, silently changed the historical sale's recorded price *and* revenue to $2,000 too, retroactively. This directly contradicts Phase 3 §10's own case-19 requirement ("a mid-catalog price change never rewrites historical sales") and the brief's own priority order (§27: mathematical accuracy ranks above automation/convenience). There is no macro-free way to "snapshot" a formula's result into a cell at the moment a row is completed.
+Phase 3 §3.2 originally designed these two columns as "auto-filled, editable": a lookup formula pre-fills the value the moment a product is chosen, and the user *may* overwrite it. QA Test E found that if the user does **not** overwrite it — the normal path, since nothing prompts them to — the cell keeps the live lookup formula forever. Recording a sale at $1,000, then later editing that product's price to $2,000 in `📦 Productos`, silently changed the historical sale's recorded price *and* revenue to $2,000 too, retroactively. This directly contradicted Phase 3 §10's own case-19 requirement ("a mid-catalog price change never rewrites historical sales") and the brief's own priority order (§27: mathematical accuracy ranks above automation/convenience). There is no macro-free way to "snapshot" a formula's result into a cell at the moment a row is completed.
 
-Options, most conservative first:
+Three options were presented; **option 1 was chosen**: `Precio de venta` and `Comisión %` are now plain required inputs, exactly like `Cantidad`/`Fecha` — no formula, no auto-fill, nothing to silently drift. The user types the price actually charged at the time of sale. This trades away the "one less thing to type" convenience for a guarantee that a recorded sale can never change after the fact, matching the brief's stated priority order.
 
-1. **Make Precio de venta and Comisión % plain required inputs** (remove the auto-fill). Guarantees correctness by construction; costs the user re-typing or copying the price each time. Changes the 3-state cell system on `🛒 Ventas` (drops the "state 2: autofill" category there) and Phase 3's formula for those two columns.
-2. **Keep the auto-fill; add an explicit on-sheet warning** next to those columns about the retroactivity risk. Preserves the convenience; accepts the risk as a documented, known limitation rather than eliminating it.
-3. Another approach, if preferred.
+Applied changes:
+- `build/build_workbook.py`: `Ventas` columns E/G moved from category `"autofill"` to `"input"`; the lookup formulas were removed; new tooltips point the user to Productos as a manual reference instead of auto-filling; numeric validation (decimal ≥ 0 for E, 0–100% for G) was added, matching every other plain numeric input column; the shared legend was simplified to the 2 states actually used anywhere in the workbook now (no column uses "auto-filled, editable" any more).
+- `docs/02-data-layout.md`, `docs/03-calculation-formulas.md`, `docs/04-ux-ui.md`: updated in place with amendment notes at each affected section (table definitions, formula spec, 3-state design system, Ventas UX spec, tooltip list) rather than silently rewritten — each amendment names what changed, why, and points back here.
+- Retested (QA Test E, rerun after the fix): confirmed the historical sale's price no longer changes when the product's price is edited afterward (§4). Full workbook recalculated clean afterward: 0 errors across 1,073 formulas.
 
-This is flagged rather than resolved because it changes an already-approved Phase 3/4 design decision — per instruction, that stops for a decision rather than being applied silently. Everything else in this phase is complete, verified, and ready; this is the one item holding Phase 5 back from being marked fully done.
+No other Phase 1–4 decision changed as a result of this fix.
 
 ---
 
@@ -98,4 +99,6 @@ This is flagged rather than resolved because it changes an already-approved Phas
 | Demo data cannot contaminate real data | ✅ `_Demo_Datos` and the real tables share no cell, formula, or named range; `🎬 Demo` is fully locked/read-only |
 | Protected/calculated cells cannot be accidentally edited | ✅ every calculated cell is locked, every sheet has protection enabled; verified in the pristine (unrecalculated) file's saved state |
 | Dashboard KPIs reconcile with underlying data | ✅ hand-verified in QA Tests B, C, F against the raw table data |
-| Productos/Ventas/Gastos/Objetivos/Simulador stay correctly connected | ⚠️ **mostly** — confirmed for aggregation (Ventas→Productos rollups, Gastos→Ganancia real, Objetivos→Simulador baseline), but §5's finding shows one connection (a later Productos price edit reaching into historical Ventas rows) behaves in a way the approved spec explicitly said it shouldn't |
+| Productos/Ventas/Gastos/Objetivos/Simulador stay correctly connected | ✅ confirmed for aggregation (Ventas→Productos rollups, Gastos→Ganancia real, Objetivos→Simulador baseline) and, after the §5 fix, for isolation (a later Productos price edit no longer reaches into historical Ventas rows) |
+
+**Phase 5 (build), Phase 6 (demo), Phase 7 (protection/validation), and Phase 8 (QA) are complete.** All 25 edge cases pass; all pre-finalization checklist items are green.

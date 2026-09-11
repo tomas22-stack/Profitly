@@ -43,21 +43,21 @@ Delta-color rule (important nuance): color follows *business favorability*, not 
 - Headings: bold, brand-color, larger scale (page title > section title > card label).
 - Body/values: regular weight; KPI values set larger and bold to read at a glance; supporting labels smaller and muted gray.
 - Numbers are right-aligned and use consistent decimal/thousands formatting per `Cfg_Moneda` (established Phase 1 §8.2) — never mixed formats in the same column.
-- Iconography is the existing emoji set already fixed by Phase 1's navigation (🏠⚙️📦🛒💸🎯🔬) plus a small closed set used consistently: ⓘ (tooltip), ▲▼ (deltas), 🏆🔥💰⚠️ (rankings, unchanged from Phase 1 §7), 💡 (insights), ✏️/✎ (editable-auto-filled hint), 🔒 (locked, used sparingly — the fill-color system in §1.3 is the primary signal, the lock icon is a reinforcement only on the legend, not on every cell, to avoid visual noise).
+- Iconography is the existing emoji set already fixed by Phase 1's navigation (🏠⚙️📦🛒💸🎯🔬) plus a small closed set used consistently: ⓘ (tooltip), ▲▼ (deltas), 🏆🔥💰⚠️ (rankings, unchanged from Phase 1 §7), 💡 (insights), ✏️/✎ (reserved for the unused "auto-filled" state, §1.3), 🔒 (locked, used sparingly — the fill-color system in §1.3 is the primary signal, the lock icon is a reinforcement only on the legend, not on every cell, to avoid visual noise).
 
 ### 1.3 The Input/Calculated Visual System (applies to every sheet with a table)
 
-Three states, taught once via a legend, applied everywhere without exception:
+Two states in practice, taught once via a legend, applied everywhere without exception. A third ("entrada automática, editable" — pre-filled for convenience, safe to overwrite) was originally specified for `Ventas.Precio de venta`/`Comisión %`, but QA (build Phase 5/8) found that design unsafe: a user who never retypes the auto-filled value leaves a live formula in place, so a later product-price edit silently rewrites historical sales. Approved fix: those two columns became plain state-1 required inputs, so no column in the shipped workbook uses state 2 — it's kept below only as design-system documentation in case a future feature needs it. Full detail: `docs/05-qa-results.md` §5.
 
 | State | Meaning | Visual treatment | Where it appears |
 |---|---|---|---|
-| 1 — **Entrada requerida** | The user must type this | White fill, solid light-blue border, normal text | Producto, Fecha, Cantidad, Categoría, Importe, etc. — the bulk of every input column |
-| 2 — **Entrada automática (editable)** | Pre-filled for convenience, safe to overwrite | Light lavender fill, dashed border, small ✎ note | `Ventas.Precio de venta`, `Ventas.Comisión %` only (Phase 3 §1/§3) |
+| 1 — **Entrada requerida** | The user must type this | White fill, solid light-blue border, normal text | Every input column, including `Ventas.Precio de venta`/`Comisión %` |
+| 2 — **Entrada automática (editable)** *(reserved, unused)* | Pre-filled for convenience, safe to overwrite | Light lavender fill, dashed border, small ✎ note | Not used by any column in this build |
 | 3 — **Calculado por Profitly** | Never edit; Profitly computed it | Soft gray-green fill, no border, locked | `Costo real de venta`, `Margen`, `Ganancia`, all ranking cards, all dashboard KPIs/charts, Objetivos progress panel, Simulador outputs |
 
-**Legend component**: a small, once-per-sheet horizontal strip placed directly above any table that mixes states (Productos, Ventas), reading:
+**Legend component**: a small, once-per-sheet horizontal strip placed directly above any table with calculated columns (Productos, Ventas), showing only the states actually used on that sheet (input + calculado — state 2 is never shown, since displaying an unused state would invite the user to look for a cell that isn't there), reading:
 
-> `⬜ Vos cargás esto   ·   🔸 Profitly lo completa (lo podés cambiar)   ·   🔒 Profitly lo calculó`
+> `⬜ Vos cargás esto   ·   🔒 Profitly lo calculó`
 
 with each label swatched in its actual cell color, so the visual vocabulary is learned once and recognized everywhere after.
 
@@ -148,13 +148,15 @@ Applies identically to all 7 App sheets, per Phase 2 §1 (row 1 = nav, row 2 = s
 
 ### 3.4 🛒 Ventas
 
-**Job it does for the user:** log a sale in under 10 seconds, without re-typing anything already known about the product.
+**Job it does for the user:** log a sale quickly and correctly, with every field that must be typed clearly marked as such.
+
+> **Amendment (post-build, approved):** this sheet originally auto-filled Precio de venta/Comisión % from the product catalog (state 2, "entrada automática editable") to minimize typing. QA found that design unsafe — a user who accepted the auto-filled value without retyping it left a live formula in place, so a later price edit on the product silently rewrote that historical sale's recorded price and revenue. Approved fix: both columns are now plain required inputs (state 1), so the user types the price actually charged, and it can never drift. The ⓘ tooltip on each column (§5) now points the user to Productos as a manual reference instead of auto-filling. Full detail: `docs/05-qa-results.md` §5.
 
 **Content:**
 
 1. **Mini stat strip** — two small inline stats, not full KPI Cards (this sheet is for data entry, not analysis — keeping it light per §0's "avoid overwhelming" rule): `Ventas este mes: [N registros]` and `Última venta: [fecha]`.
-2. **Legend** (§1.3), now demonstrating all 3 states since this is the one sheet where all 3 coexist.
-3. **Entry table** — columns B–L per Phase 3 §3: B, C, D, F, H, I in state 1 (white); **E and G in state 2** (light lavender, dashed, with a small ✎ note reading *"Se completa solo cuando elegís un producto — lo podés cambiar."*); J–L in state 3 (gray-green). Same "+ Agregar venta" dashed-row affordance as Productos.
+2. **Legend** (§1.3) — this sheet uses only state 1 (input) and state 3 (calculated); the legend shows just those two.
+3. **Entry table** — columns B–L per Phase 3 §3: B, C, D, E, F, G, H, I all in state 1 (white, including Precio de venta and Comisión %, per the amendment above); J–L in state 3 (gray-green). Same "+ Agregar venta" dashed-row affordance as Productos.
 
 **Empty states:**
 - 0 productos in catalog yet → the `Producto` dropdown has nothing to offer; instead of a silently-empty dropdown, a guidance Alert Banner sits above the table: *"Necesitás cargar al menos un producto antes de registrar ventas."* + Primary Button "Ir a Productos →".
@@ -229,7 +231,8 @@ Consolidated (every ⓘ referenced above, in one place for review):
 | Inicio | Margen | Porcentaje de tus ventas que queda después de descontar los costos asociados a vender. |
 | Productos | 🏆 Más rentable | El producto con mejor margen entre los que ya vendiste. |
 | Productos | 🔥 Más vendido | El producto que más unidades vendiste. No es necesariamente el que más ganancia te deja — mirá "Más rentable" para eso. |
-| Ventas | Precio de venta / Comisión % | Se completa solo cuando elegís un producto — lo podés cambiar. |
+| Ventas | Precio de venta | Ingresá el precio al que vendiste — fijate el precio actual en 📦 Productos si querés usarlo de referencia. |
+| Ventas | Comisión % | Ingresá la comisión de esta venta — fijate la comisión del producto en 📦 Productos si querés usarla de referencia. |
 | Objetivos | Restante | Lo que te falta ganar este mes para llegar a tu objetivo. |
 | Objetivos | Ganancia diaria necesaria | Cuánto necesitás ganar, en promedio, cada día que queda del mes. |
 | Objetivos | Facturación necesaria | Cuánto necesitás vender (no ganar) para llegar a tu objetivo, según tu margen actual. |
