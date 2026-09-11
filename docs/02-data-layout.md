@@ -157,7 +157,9 @@ Engine sheets use a uniform two-column convention: column A = label (for develop
 
 ### 4.2 `_Listas`
 
-One column per list, headers in row 1, values below — each column is the literal source range for its dropdown (`Lst_Categorias` = `_Listas!$B$2:$B$50`, etc.). Configuración's onboarding writes new rows here when the user adds a category/canal; §0.2's uniqueness logic does not apply here since list values are curated, not a join key.
+One column per list, headers in row 1, values below — each column is the literal source range for its dropdown. §0.2's uniqueness logic does not apply here since list values are curated, not a join key.
+
+> **Amendment (post-build, approved):** `Lst_Categorias`/`Lst_Canales` are **not** defined on `_Listas` — they point directly at the editable list cells on `⚙️ Configuración` instead (`docs/06-beginner-review-and-polish.md` §2.1). Phase 9 review found the original design — "Configuración's onboarding writes new rows here" — impossible to actually carry out: `_Listas` is hidden and protected, so there was no mechanism, macro-free or otherwise, by which a user's edit on Configuración could ever reach it, and the text shipped in Phase 5 just told the user to edit the hidden sheet directly, which they cannot do. Pointing the named range at Configuración's own cells (the same pattern already used for `Cfg_NombreNegocio`) removes the need for any such mechanism. `_Listas` keeps `Lst_CategoriasGasto`, `Lst_TiposGasto`, `Lst_Monedas`, and `Lst_PeriodosRapidos` — none of those were ever specified as onboarding-editable, so they're unaffected.
 
 ### 4.3 `_GastosCalc`
 

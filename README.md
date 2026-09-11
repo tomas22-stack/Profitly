@@ -14,5 +14,7 @@ Following the phased build process defined in the product brief:
 - [x] **Phase 6 — Populate the demo**: built into Phase 5 (`_Demo_Datos`)
 - [x] **Phase 7 — Protect formulas & validate inputs**: built into Phase 5
 - [x] **Phase 8 — QA**: [`docs/05-qa-results.md`](docs/05-qa-results.md) — all 25 edge cases pass
-- [ ] Phase 9 — Beginner-perspective review
-- [ ] Phase 10 — Visual polish
+- [x] **Phase 9 — Beginner-perspective review**: [`docs/06-beginner-review-and-polish.md`](docs/06-beginner-review-and-polish.md)
+- [x] **Phase 10 — Visual polish**: same doc, §3 — final QA rerun against the actual shipped file, all green
+
+**Profitly is complete.**

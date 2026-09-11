@@ -120,6 +120,14 @@ ENGINE_SHEETS = [SH__CONFIG, SH__LISTAS, SH__GASTOSCALC, SH__DASHDATA, SH__OBJCA
 for name in APP_SHEETS + ENGINE_SHEETS:
     ws_new(name)
 
+# Phase 10 polish: a subtle brand-colored tab strip on every app sheet, so the
+# tab row itself reads as "one product" rather than a stack of default-gray
+# Excel tabs -- the Demo tab gets the warning/amber tint instead, matching its
+# mode badge (§2), so it's visually distinct from Mi Negocio even before
+# opening it.
+for name in APP_SHEETS:
+    wb[name].sheet_properties.tabColor = C_WARNING if name == SH_DEMO else C_PRIMARY
+
 NAV_TABS = [SH_INICIO, SH_CONFIG, SH_PRODUCTOS, SH_VENTAS, SH_GASTOS, SH_OBJETIVOS, SH_SIMULADOR]
 
 def name_range(rangename, sheet, ref):
@@ -262,7 +270,7 @@ setc(ws, "B1", "Valor", f=F(10, bold=True))
 name_range("Cfg_NombreNegocio", SH_CONFIG, "$C$11")
 name_range("Cfg_TipoNegocio", SH_CONFIG, "$C$12")
 name_range("Cfg_Moneda", SH_CONFIG, "$C$13")
-name_range("Cfg_ObjetivoMensualDefault", SH_CONFIG, "$C$24")
+name_range("Cfg_ObjetivoMensualDefault", SH_CONFIG, "$C$35")
 
 setc(ws, "A6", "Cfg_PeriodoInicio")
 setc(ws, "B6",
@@ -291,9 +299,11 @@ ws.sheet_state = "hidden"
 # _Listas (docs/02-data-layout.md #4.2)
 # ---------------------------------------------------------------------------
 ws = wb[SH__LISTAS]
+# Lst_Categorias / Lst_Canales are NOT defined here (Phase 9 review fix): they
+# point directly at the editable list cells on ⚙️ Configuración instead (see
+# that section), the same pattern as Cfg_NombreNegocio -- a hidden, protected
+# sheet cannot be the place a first-time user is told to edit something.
 LISTAS = {
-    "Lst_Categorias": (["General", "Alimentos", "Indumentaria", "Accesorios", "Hogar", "Belleza", "Servicios"], "A"),
-    "Lst_Canales": (["Local", "Online", "Mayorista", "Redes sociales", "Feria"], "B"),
     "Lst_CategoriasGasto": (["Publicidad", "Software/Suscripciones", "Internet", "Packaging general", "Herramientas", "Otros"], "C"),
     "Lst_TiposGasto": (["Fijo", "Variable", "Único"], "D"),
     "Lst_Monedas": (["$", "US$", "€", "S/", "MX$"], "E"),
@@ -419,7 +429,7 @@ prod_cols = [
     ("M", "Margen", "calc", FMT_PCT),
     ("N", "Unidades vendidas", "calc", FMT_INT),
     ("O", "Ganancia total", "calc", FMT_CURRENCY),
-    ("P", "Alerta margen bajo", "calc", "0"),
+    ("P", "Alerta margen bajo", "calc", '[=1]"⚠️";;'),  # Phase 10 polish: blank for 0, an icon for 1 -- not a raw digit
 ]
 for cl, header, cat, nf in prod_cols:
     setc(ws, f"{cl}{HEADER_ROW_P}", header)
@@ -442,6 +452,7 @@ tbl = Table(displayName="tbl_Productos", ref=f"B{HEADER_ROW_P}:P{DATA_ROW_P}")
 tbl.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
 ws.add_table(tbl)
 tooltip(ws, "F12", "Comisión %", "Se completa solo cuando elegís un producto — lo podés cambiar.")
+ws.freeze_panes = f"A{DATA_ROW_P}"  # nav/title/rankings/headers stay visible while the table scrolls
 
 ws.sheet_view.zoomScale = 100
 print("📦 Productos built")
@@ -512,6 +523,7 @@ setc(ws, f"B{r+2}", '=IF(AND(COUNTA(tbl_Productos[Producto])>0,COUNTA(tbl_Ventas
 tbl = Table(displayName="tbl_Ventas", ref=f"B{HEADER_ROW_V}:L{DATA_ROW_V}")
 tbl.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
 ws.add_table(tbl)
+ws.freeze_panes = f"A{DATA_ROW_V}"
 
 dv_prod = DataValidation(type="list", formula1="=tbl_Productos[Producto]", allow_blank=True,
                           showErrorMessage=True, error="Elegí un producto de tu catálogo.", errorTitle="Producto inválido")
@@ -561,6 +573,7 @@ setc(ws, f"B{DATA_ROW_G+2}",
 tbl = Table(displayName="tbl_Gastos", ref=f"B{HEADER_ROW_G}:F{DATA_ROW_G}")
 tbl.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
 ws.add_table(tbl)
+ws.freeze_panes = f"A{DATA_ROW_G}"
 
 dv_catg = DataValidation(type="list", formula1="=Lst_CategoriasGasto", allow_blank=True)
 dv_catg.add(f"C{DATA_ROW_G}")
@@ -991,7 +1004,8 @@ for scen, (c0, c1) in SCEN_COLS.items():
 deltas = [
     ("Δ Precio %", "DeltaPrecio", FMT_PCT, 0.0, "Δ Precio %", "Cuánto cambiarías tu precio de venta."),
     ("Δ Cantidad de ventas %", "DeltaVentas", FMT_PCT, 0.0, "Δ Cantidad de ventas %", "Cuánto cambiaría la cantidad de unidades que vendés."),
-    ("Δ Margen (pp)", "DeltaMargen", "0.0", 0.0, "Δ Margen", "Este ajuste se suma al efecto que ya tiene un cambio de precio sobre tu margen."),
+    ("Δ Margen (pp)", "DeltaMargen", "0.0", 0.0, "Δ Margen",
+     "pp = puntos porcentuales (ej.: de 20% a 25% es +5 pp). Este ajuste se suma al efecto que ya tiene un cambio de precio sobre tu margen."),
     ("Δ Gastos ($)", "DeltaGastos", FMT_CURRENCY, 0, "Δ Gastos", "Cambio en tus gastos generales del negocio."),
     ("Δ Publicidad ($)", "DeltaPublicidad", FMT_CURRENCY, 0, "Δ Publicidad", "Gasto adicional en publicidad para este escenario."),
 ]
@@ -1004,11 +1018,16 @@ for scen, (c0, c1) in SCEN_COLS.items():
         name_range(f"Sim_{scen}_{suffix}", SH_SIMULADOR, f"${c1}${r}")
         tooltip(ws, f"{c0}{r}", tip_title, tip_text)
         r += 1
-# Column grouping (native outline, no macro) for Scenarios B/C -- collapsed by default
-for cl in ("F", "G", "H", "J", "K", "L"):
-    ws.column_dimensions[cl].outline_level = 1
+# Column grouping (native outline, no macro) for Scenarios B/C -- collapsed by
+# default. Set outline_level AND hidden explicitly per column (including the I
+# gutter, so the collapsed group leaves no visible sliver) -- calling
+# DimensionHolder.group() here was found (Phase 9 review) to only apply to the
+# first column of the range, silently leaving G/H/J/K/L expanded and unhidden.
+for cl in ("F", "G", "H", "I", "J", "K", "L"):
+    cd = ws.column_dimensions[cl]
+    cd.outline_level = 1
+    cd.hidden = True
 ws.sheet_properties.outlinePr.summaryRight = True
-ws.column_dimensions.group("F", "L", hidden=True, outline_level=1)
 
 row_proj_title = 22
 merge(ws, "B22:D22")
@@ -1237,12 +1256,33 @@ def build_dashboard(sheet_key, is_demo):
         banner(ws, "B6:P6", "Estás viendo datos de ejemplo. Cuando quieras, pasá a 🚀 Mi Negocio para cargar los tuyos.", tone="warning")
         ws["B6"].hyperlink = f"#'{SH_INICIO}'!A1"
     else:
+        # NOTE (Phase 9 review, two fixes applied here):
+        # 1. This banner's text always said "→ Ir a X" but the cell had no
+        #    hyperlink -- unlike every other "→ Ir a X" banner in the workbook,
+        #    which are clickable. Fixed with a dynamic HYPERLINK() whose target
+        #    sheet is computed by the same condition chain as the message, so
+        #    one cell correctly links to whichever step is actually next.
+        # 2. The 4th step's "objetivo missing" check used OR where it needed
+        #    AND (Objetivos' own equivalent prompt, B9 below, already used AND
+        #    correctly) -- as written, OR made this step permanently unable to
+        #    resolve as "done" for a user who sets a default goal via
+        #    Configuración without also adding an explicit tbl_Objetivos row,
+        #    so the banner would never fully disappear for that (very common)
+        #    path. Fixed to AND, matching Objetivos!B9's logic.
+        c1 = "COUNTA(tbl_Productos[Producto])=0"
+        c2 = "COUNTA(tbl_Ventas[Fecha])=0"
+        c3 = "COUNTA(tbl_Gastos[Fecha])=0"
+        c4 = "AND(Cfg_ObjetivoMensualDefault=0,COUNTA(tbl_Objetivos[Objetivo de ganancia])<=1)"
+        msg1 = "🚀 Te falta 1 paso para ver tu panorama completo: Configurá tu negocio y agregá productos → Ir a ⚙️ Configuración"
+        msg2 = "🚀 Te falta 1 paso: Registrá tu primera venta → Ir a 🛒 Ventas"
+        msg3 = "🚀 Te falta 1 paso: Registrá tus gastos → Ir a 💸 Gastos"
+        msg4 = "🚀 Te falta 1 paso: Definí tu objetivo mensual → Ir a 🎯 Objetivos"
+        target = f'IF({c1},"{SH_CONFIG}",IF({c2},"{SH_VENTAS}",IF({c3},"{SH_GASTOS}","{SH_OBJETIVOS}")))'
+        message = f'IF({c1},"{msg1}",IF({c2},"{msg2}",IF({c3},"{msg3}","{msg4}")))'
         setc(ws, "B6",
-             '=IF(COUNTA(tbl_Productos[Producto])=0,"🚀 Te falta 1 paso para ver tu panorama completo: Configurá tu negocio y agregá productos → Ir a ⚙️ Configuración",'
-             'IF(COUNTA(tbl_Ventas[Fecha])=0,"🚀 Te falta 1 paso: Registrá tu primera venta → Ir a 🛒 Ventas",'
-             'IF(COUNTA(tbl_Gastos[Fecha])=0,"🚀 Te falta 1 paso: Registrá tus gastos → Ir a 💸 Gastos",'
-             'IF(OR(Cfg_ObjetivoMensualDefault=0,COUNTA(tbl_Objetivos[Objetivo de ganancia])<=1),"🚀 Te falta 1 paso: Definí tu objetivo mensual → Ir a 🎯 Objetivos","")'
-             ')))', f=F(9.5, italic=True, color=C_WARNING))
+             f'=IF(NOT(OR({c1},{c2},{c3},{c4})),"",'
+             f'HYPERLINK("#\'"&{target}&"\'!A1",{message}))',
+             f=F(9.5, italic=True, color=C_WARNING))
         setc(ws, "F7", "Viendo:", f=F(9.5, color=C_MUTED), al=ALIGN_R)
         c = setc(ws, "G7", "Este mes", f=F(9.5, bold=True), fl=fill(C_INPUT_FILL), al=ALIGN_L)
         c.border = border_all(INPUT_SIDE)
@@ -1261,6 +1301,12 @@ def build_dashboard(sheet_key, is_demo):
     ]
     starts = ["B", "F", "J", "N"]
     row0 = 9
+    # Phase 10 polish: give the bold, larger-font value row (row0+1) some
+    # breathing room instead of Excel's default ~15pt row height, which reads
+    # cramped for a size-15 bold number.
+    ws.row_dimensions[row0].height = 16
+    ws.row_dimensions[row0 + 1].height = 24
+    ws.row_dimensions[row0 + 2].height = 14
     for (label, nm, nf, delta_nm, tip, *rest), c0 in zip(kpi1, starts):
         invert = bool(rest and rest[0])
         c1 = col_letter(col_idx(c0) + 2)
@@ -1276,6 +1322,9 @@ def build_dashboard(sheet_key, is_demo):
 
     # KPI row 2: Ticket promedio / Objetivo mensual / Progreso
     row0b = 13
+    ws.row_dimensions[row0b].height = 16
+    ws.row_dimensions[row0b + 1].height = 24
+    ws.row_dimensions[row0b + 2].height = 14
     tp_nm = kpi("KPI_TicketPromedio", "DemoKPI_TicketPromedio")
     card_row(ws, "B", "D", row0b, "TICKET PROMEDIO", F(9, bold=True, color=C_MUTED), top=True)
     card_row(ws, "B", "D", row0b + 1, f"={tp_nm}", F(15, bold=True, color=C_PRIMARY), nf=FMT_CURRENCY)
@@ -1358,27 +1407,50 @@ ws.add_data_validation(dv_moneda)
 for r in (11, 12, 13):
     ws[f"C{r}"].border = border_all(INPUT_SIDE)
 
+# NOTE (Phase 9 review fix): these two lists were originally just explanatory
+# text pointing the user at the hidden, protected _Listas sheet ("editá la
+# lista base en la hoja _Listas") -- a first-time user has no way to actually
+# reach or edit a hidden, locked sheet, making that instruction impossible to
+# follow. Phase 4's own spec called for a genuinely editable list here; this
+# now is one -- Lst_Categorias/Lst_Canales point directly at these cells
+# (see _Listas section), the same pattern already used for Cfg_NombreNegocio
+# etc. Editing a category/canal here immediately updates every dropdown that
+# uses it, with no hidden sheet involved.
+CAT_ROW0, CAT_N = 16, 8
 setc(ws, "B15", "Categorías de productos", f=F(11, bold=True, color=C_PRIMARY))
-setc(ws, "B16", "(Se cargan en 📦 Productos como lista desplegable — editá la lista base en la hoja _Listas.)", f=F(9, italic=True, color=C_MUTED))
+setc(ws, "B16", "Agregá o cambiá las categorías que ves como opciones en 📦 Productos.", f=F(9, italic=True, color=C_MUTED))
+CAT_DEFAULTS = ["General", "Alimentos", "Indumentaria", "Accesorios", "Hogar", "Belleza", "Servicios"]
+for i in range(CAT_N):
+    r = CAT_ROW0 + i
+    val = CAT_DEFAULTS[i] if i < len(CAT_DEFAULTS) else ""
+    c = setc(ws, f"C{r}", val, f=F(10), fl=fill(C_INPUT_FILL))
+    c.border = border_all(INPUT_SIDE)
+CAN_ROW0, CAN_N = 25, 6
+setc(ws, "B24", "Canales de venta", f=F(11, bold=True, color=C_PRIMARY))
+CAN_DEFAULTS = ["Local", "Online", "Mayorista", "Redes sociales", "Feria"]
+for i in range(CAN_N):
+    r = CAN_ROW0 + i
+    val = CAN_DEFAULTS[i] if i < len(CAN_DEFAULTS) else ""
+    c = setc(ws, f"C{r}", val, f=F(10), fl=fill(C_INPUT_FILL))
+    c.border = border_all(INPUT_SIDE)
+name_range("Lst_Categorias", SH_CONFIG, f"$C${CAT_ROW0}:$C${CAT_ROW0 + CAT_N - 1}")
+name_range("Lst_Canales", SH_CONFIG, f"$C${CAN_ROW0}:$C${CAN_ROW0 + CAN_N - 1}")
 
-setc(ws, "B18", "Canales de venta", f=F(11, bold=True, color=C_PRIMARY))
-setc(ws, "B19", "(Se cargan en 🛒 Ventas como lista desplegable — editá la lista base en la hoja _Listas.)", f=F(9, italic=True, color=C_MUTED))
-
-banner(ws, "B21:P21",
+banner(ws, "B32:P32",
        "💡 Cargá tus gastos fijos (alquiler, herramientas, suscripciones) en 💸 Gastos para que tu Ganancia real sea precisa.",
        tone="info")
-ws["B21"].hyperlink = f"#'{SH_GASTOS}'!A1"
+ws["B32"].hyperlink = f"#'{SH_GASTOS}'!A1"
 
-setc(ws, "B23", "Objetivo mensual", f=F(11, bold=True, color=C_PRIMARY))
-setc(ws, "B24", "¿Cuánto querés ganar por mes?", f=F(10))
-c = setc(ws, "C24", 0, f=F(11, bold=True), fl=fill(C_INPUT_FILL), nf=FMT_CURRENCY)
+setc(ws, "B34", "Objetivo mensual", f=F(11, bold=True, color=C_PRIMARY))
+setc(ws, "B35", "¿Cuánto querés ganar por mes?", f=F(10))
+c = setc(ws, "C35", 0, f=F(11, bold=True), fl=fill(C_INPUT_FILL), nf=FMT_CURRENCY)
 dv_objetivo = DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", allow_blank=True,
                               showErrorMessage=True, error="Ingresá un número mayor o igual a 0.", errorTitle="Valor inválido")
-dv_objetivo.add("C24")
+dv_objetivo.add("C35")
 ws.add_data_validation(dv_objetivo)
 c.border = border_all(INPUT_SIDE)
 
-banner(ws, "B26:P26",
+banner(ws, "B37:P37",
        "No hay botón \"Guardar\" — todo se guarda automáticamente a medida que escribís, como en cualquier planilla.",
        tone="neutral")
 
@@ -1438,8 +1510,14 @@ def add_dashboard_charts(sheet_key, is_demo):
                       min_row=int(trend_ref.split(":")[0][1:]) - 1, max_row=int(trend_ref.split(":")[1][1:]))
     chart1.add_data(data, titles_from_data=True)
     chart1.set_categories(cats)
-    for s in chart1.series:
+    # Phase 10 polish: brand palette instead of Excel's generic chart-style
+    # colors -- Ganancia (the headline metric) in success green, Ventas as
+    # supporting context in a muted gray-blue, both with a visible line weight.
+    chart1_colors = [C_MUTED, C_SUCCESS]
+    for s, color in zip(chart1.series, chart1_colors):
         s.smooth = False
+        s.graphicalProperties.line.solidFill = color
+        s.graphicalProperties.line.width = 24000  # EMUs, ~1.9pt
     ws.add_chart(chart1, "B23")
 
     # Chart 2: Ganancia por producto (horizontal bar)
@@ -1455,6 +1533,8 @@ def add_dashboard_charts(sheet_key, is_demo):
     chart2.add_data(data2, titles_from_data=True)
     chart2.set_categories(cats2)
     chart2.legend = None
+    if chart2.series:
+        chart2.series[0].graphicalProperties.solidFill = C_PRIMARY
     ws.add_chart(chart2, "B41")
 
     # Chart 3: Progreso hacia el objetivo (stacked bar: alcanzado vs restante)
@@ -1467,11 +1547,18 @@ def add_dashboard_charts(sheet_key, is_demo):
     chart3.height = 8
     chart3.width = 13.5
     if is_demo:
-        setc(ws, "R115", "Alcanzado"); setc(ws, "S115", "Restante")
-        setc(ws, "R116", "=DemoKPI_GananciaReal")
-        setc(ws, "S116", "=MAX(DemoKPI_Objetivo-DemoKPI_GananciaReal,0)")
-        prow0, prow1 = 115, 116
-        pcol = 18  # R
+        # Placed on the hidden _Demo_Datos engine sheet, not the visible Demo
+        # sheet (Phase 9 review finding: this was originally written directly
+        # onto 🎬 Demo at R115/S115/R116/S116 -- unlabeled raw numbers sitting
+        # in the middle of an otherwise blank area a curious user could scroll
+        # into. The real 🏠 Inicio already did this correctly, on the hidden
+        # _DashboardData sheet -- this makes Demo consistent with it.
+        wsDD = wb[SH__DEMODATA]
+        setc(wsDD, "Z312", "Alcanzado"); setc(wsDD, "AA312", "Restante")
+        setc(wsDD, "Z313", "=DemoKPI_GananciaReal")
+        setc(wsDD, "AA313", "=MAX(DemoKPI_Objetivo-DemoKPI_GananciaReal,0)")
+        prow0, prow1 = 312, 313
+        pcol = 26  # Z
     else:
         wsD = wb[SH__DASHDATA]
         setc(wsD, "E1", "Alcanzado"); setc(wsD, "F1", "Restante")
@@ -1484,6 +1571,9 @@ def add_dashboard_charts(sheet_key, is_demo):
     data3 = Reference(wb[pdata_sheet], min_col=pcol, max_col=pcol + 1, min_row=prow0, max_row=prow1)
     chart3.add_data(data3, titles_from_data=True)
     chart3.legend.position = "b"
+    chart3_colors = [C_SUCCESS, C_NAV_INACTIVE_BG]  # Alcanzado (green), Restante (neutral gray)
+    for s, color in zip(chart3.series, chart3_colors):
+        s.graphicalProperties.solidFill = color
     ws.add_chart(chart3, "K41")
 
 add_dashboard_charts(SH_INICIO, is_demo=False)
@@ -1524,6 +1614,13 @@ MSG_DATE = "La fecha no puede ser futura."
 
 # Productos
 wsP = wb[SH_PRODUCTOS]
+# NOTE (Phase 9 review fix): Categoría was documented (docs/02/03) as a
+# dropdown but the actual data validation was never wired up during the
+# Phase 5 build -- found by re-reading the shipped file, not the spec.
+dv_categoria = DataValidation(type="list", formula1="=Lst_Categorias", allow_blank=True,
+                               showErrorMessage=True, error="Elegí una categoría de la lista.", errorTitle="Categoría inválida")
+dv_categoria.add(f"C{DATA_ROW_P}")
+wsP.add_data_validation(dv_categoria)
 for cl in ("D", "E", "G", "H", "I", "J"):  # Precio, Costo, Packaging, Envío, Publicidad, Otros
     dv_decimal_min(wsP, f"{cl}{DATA_ROW_P}", 0, MSG_NUM_GE0)
 dv_decimal_between(wsP, f"F{DATA_ROW_P}", 0, 1, MSG_PCT)
@@ -1625,9 +1722,14 @@ protect_sheet(wb[SH_SIMULADOR])
 unlock(wb[SH_INICIO], "G7")
 protect_sheet(wb[SH_INICIO])
 
-# Configuración: unlock the business-setting input cells
-for addr in ("C11", "C12", "C13", "C24"):
+# Configuración: unlock the business-setting input cells, plus the Categorías/
+# Canales list cells (Phase 9 review fix)
+for addr in ("C11", "C12", "C13", "C35"):
     unlock(wb[SH_CONFIG], addr)
+for i in range(CAT_N):
+    unlock(wb[SH_CONFIG], f"C{CAT_ROW0 + i}")
+for i in range(CAN_N):
+    unlock(wb[SH_CONFIG], f"C{CAN_ROW0 + i}")
 protect_sheet(wb[SH_CONFIG])
 
 # Demo and Menú: fully locked (read-only), nothing to unlock
@@ -1647,4 +1749,4 @@ from openpyxl.workbook.protection import WorkbookProtection
 wb.security = WorkbookProtection(lockStructure=True)
 
 print("Protection applied")
-wb.save("/home/user/Profitly/build/_stage.xlsx")
+wb.save("/home/user/Profitly/build/Profitly.xlsx")
