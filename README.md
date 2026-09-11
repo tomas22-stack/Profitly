@@ -16,5 +16,6 @@ Following the phased build process defined in the product brief:
 - [x] **Phase 8 — QA**: [`docs/05-qa-results.md`](docs/05-qa-results.md) — all 25 edge cases pass
 - [x] **Phase 9 — Beginner-perspective review**: [`docs/06-beginner-review-and-polish.md`](docs/06-beginner-review-and-polish.md)
 - [x] **Phase 10 — Visual polish**: same doc, §3 — final QA rerun against the actual shipped file, all green
+- [x] **Excel compatibility fix**: [`docs/07-excel-compatibility-fix.md`](docs/07-excel-compatibility-fix.md) — the shipped file triggered Excel's repair prompt (invalid OPC relationships behind every internal navigation link); root-caused, fixed, and re-verified against the actual package
 
 **Profitly is complete.**

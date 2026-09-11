@@ -27,6 +27,7 @@ import openpyxl
 from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.worksheet.hyperlink import Hyperlink
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment, NamedStyle
 from openpyxl.formatting.rule import DataBarRule, CellIsRule, FormulaRule
 from openpyxl.utils import get_column_letter, column_index_from_string
@@ -179,7 +180,7 @@ def add_nav(ws, active, mode_label="Mi Negocio", mode_bg=C_NAV_INACTIVE_BG, mode
                  fl=fill(C_PRIMARY if is_active else C_NAV_INACTIVE_BG),
                  al=ALIGN_C)
         if not is_active:
-            ws[f"{col_letter(start)}1"].hyperlink = f"#'{tab}'!A1"
+            internal_link(ws[f"{col_letter(start)}1"], tab)
         col = end + 1  # 1-col gutter
     # mode badge, far right
     badge_start = col + 1
@@ -199,6 +200,24 @@ def add_header(ws, title, subtitle):
     ws.column_dimensions["A"].width = 2.5
     for cl in "BCDEFGHIJKLMNOP":
         ws.column_dimensions[cl].width = 12
+
+def internal_link(cell, sheet_name):
+    """Set a same-workbook navigation link on `cell`, targeting A1 of `sheet_name`.
+    CORRUPTION FIX (see module docstring): plain `cell.hyperlink = "#'X'!A1"`
+    string assignment makes openpyxl build a Hyperlink with `target=`, which
+    it serializes as an OPC relationship with TargetMode="External" -- invalid
+    for a workbook-internal reference, and exactly the kind of malformed
+    relationship (a bare "#..." fragment marked External, with an unescaped
+    literal quote and non-ASCII characters inside the Target URI) that
+    Excel's strict package validator rejects with a "repair" prompt, while
+    LibreOffice's much more lenient reader accepted it silently -- which is
+    why this was never caught by recalculation-based QA. The correct
+    construction uses `location=` (and `target=None`), which openpyxl writes
+    as a plain `location` attribute on the <hyperlink> element with no
+    relationship at all, matching what Excel itself produces for an internal
+    link.
+    """
+    cell.hyperlink = Hyperlink(ref=cell.coordinate, location=f"'{sheet_name}'!A1", target=None)
 
 def tooltip(ws, addr, title, text):
     dv = DataValidation(type=None, showInputMessage=True, promptTitle=title[:32], prompt=text[:255])
@@ -471,7 +490,7 @@ setc(ws, "G6", '=IF(COUNTA(tbl_Ventas[Fecha])=0,"Última venta: —","Última ve
 
 banner(ws, "B7:P7", "Necesitás cargar al menos un producto antes de registrar ventas. → Ir a 📦 Productos", tone="info")
 setc(ws, "B7", '=IF(COUNTA(tbl_Productos[Producto])=0,"Necesitás cargar al menos un producto antes de registrar ventas. → Ir a 📦 Productos","")')
-ws["B7"].hyperlink = f"#'{SH_PRODUCTOS}'!A1"
+internal_link(ws["B7"], SH_PRODUCTOS)
 
 legend(ws, 8)
 
@@ -980,7 +999,7 @@ add_header(ws, "🔬 ¿QUÉ PASARÍA SI...?", "Probá una decisión sin tocar tu
 
 setc(ws, "B6", '=IF(NOT(Sim_DatosSuficientes),"Necesitás cargar ventas reales antes de simular escenarios. → Ir a 🛒 Ventas","")',
      f=F(10, italic=True, color=C_MUTED))
-ws["B6"].hyperlink = f"#'{SH_VENTAS}'!A1"
+internal_link(ws["B6"], SH_VENTAS)
 
 setc(ws, "B7", "ESCENARIO ACTUAL", f=F(11, bold=True, color=C_PRIMARY))
 baseline_labels = [
@@ -1254,7 +1273,7 @@ def build_dashboard(sheet_key, is_demo):
 
     if is_demo:
         banner(ws, "B6:P6", "Estás viendo datos de ejemplo. Cuando quieras, pasá a 🚀 Mi Negocio para cargar los tuyos.", tone="warning")
-        ws["B6"].hyperlink = f"#'{SH_INICIO}'!A1"
+        internal_link(ws["B6"], SH_INICIO)
     else:
         # NOTE (Phase 9 review, two fixes applied here):
         # 1. This banner's text always said "→ Ir a X" but the cell had no
@@ -1386,7 +1405,7 @@ for (label, status_f), c0, target in zip(steps, starts, targets):
     card_row(ws, c0, c1, 6, label, F(8.5, bold=True, color=C_PRIMARY), top=True)
     cell = card_row(ws, c0, c1, 7, status_f, F(13, bold=True), bottom=True)
     if target:
-        ws[f"{c0}6"].hyperlink = f"#'{target}'!A1"
+        internal_link(ws[f"{c0}6"], target)
 ws.row_dimensions[6].height = 26
 
 setc(ws, "B10", "Tu negocio", f=F(11, bold=True, color=C_PRIMARY))
@@ -1439,7 +1458,7 @@ name_range("Lst_Canales", SH_CONFIG, f"$C${CAN_ROW0}:$C${CAN_ROW0 + CAN_N - 1}")
 banner(ws, "B32:P32",
        "💡 Cargá tus gastos fijos (alquiler, herramientas, suscripciones) en 💸 Gastos para que tu Ganancia real sea precisa.",
        tone="info")
-ws["B32"].hyperlink = f"#'{SH_GASTOS}'!A1"
+internal_link(ws["B32"], SH_GASTOS)
 
 setc(ws, "B34", "Objetivo mensual", f=F(11, bold=True, color=C_PRIMARY))
 setc(ws, "B35", "¿Cuánto querés ganar por mes?", f=F(10))
@@ -1476,13 +1495,13 @@ merge(ws, "C9:G14")
 c = setc(ws, "C9", "🎬\n\nVer una demo\n\nMirá un ejemplo con datos ficticios y entendé cómo funciona Profitly.\n\nEntrar →",
          f=F(12, bold=True, color="FFFFFF"), fl=fill(C_WARNING), al=ALIGN_C)
 c.border = border_all(THIN)
-ws["C9"].hyperlink = f"#'{SH_DEMO}'!A1"
+internal_link(ws["C9"], SH_DEMO)
 
 merge(ws, "I9:M14")
 c = setc(ws, "I9", "🚀\n\nEmpezar con mi negocio\n\nCargá tus productos y ventas reales y llevá el control de tu rentabilidad.\n\nEntrar →",
          f=F(12, bold=True, color="FFFFFF"), fl=fill(C_PRIMARY), al=ALIGN_C)
 c.border = border_all(THIN)
-ws["I9"].hyperlink = f"#'{SH_INICIO}'!A1"
+internal_link(ws["I9"], SH_INICIO)
 
 merge(ws, "B17:O17")
 setc(ws, "B17", "¿Primera vez? Te recomendamos empezar por la Demo.", f=F(9.5, italic=True, color=C_MUTED), al=ALIGN_C)
