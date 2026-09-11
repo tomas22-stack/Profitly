@@ -7,7 +7,7 @@ Premium Excel/Google Sheets profitability-management product for small business 
 Following the phased build process defined in the product brief:
 
 - [x] **Phase 1 — Technical architecture**: [`docs/01-architecture.md`](docs/01-architecture.md)
-- [ ] Phase 2 — Data model & relationships (exact layout)
+- [x] **Phase 2 — Data model & relationships (exact layout)**: [`docs/02-data-layout.md`](docs/02-data-layout.md)
 - [ ] Phase 3 — Calculations & financial logic (final formulas)
 - [ ] Phase 4 — UX/UI structure
 - [ ] Phase 5 — Build the workbook
