@@ -544,11 +544,11 @@ tbl.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=Tru
 ws.add_table(tbl)
 ws.freeze_panes = f"A{DATA_ROW_V}"
 
-dv_prod = DataValidation(type="list", formula1="=tbl_Productos[Producto]", allow_blank=True,
+dv_prod = DataValidation(type="list", formula1="tbl_Productos[Producto]", allow_blank=True,
                           showErrorMessage=True, error="Elegí un producto de tu catálogo.", errorTitle="Producto inválido")
 dv_prod.add(f"C{DATA_ROW_V}")
 ws.add_data_validation(dv_prod)
-dv_canal = DataValidation(type="list", formula1="=Lst_Canales", allow_blank=True,
+dv_canal = DataValidation(type="list", formula1="Lst_Canales", allow_blank=True,
                            showErrorMessage=True, error="Elegí un canal de la lista.", errorTitle="Canal inválido")
 dv_canal.add(f"F{DATA_ROW_V}")
 ws.add_data_validation(dv_canal)
@@ -594,10 +594,10 @@ tbl.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=Tru
 ws.add_table(tbl)
 ws.freeze_panes = f"A{DATA_ROW_G}"
 
-dv_catg = DataValidation(type="list", formula1="=Lst_CategoriasGasto", allow_blank=True)
+dv_catg = DataValidation(type="list", formula1="Lst_CategoriasGasto", allow_blank=True)
 dv_catg.add(f"C{DATA_ROW_G}")
 ws.add_data_validation(dv_catg)
-dv_tipog = DataValidation(type="list", formula1="=Lst_TiposGasto", allow_blank=True)
+dv_tipog = DataValidation(type="list", formula1="Lst_TiposGasto", allow_blank=True)
 dv_tipog.add(f"F{DATA_ROW_G}")
 ws.add_data_validation(dv_tipog)
 
@@ -1305,7 +1305,7 @@ def build_dashboard(sheet_key, is_demo):
         setc(ws, "F7", "Viendo:", f=F(9.5, color=C_MUTED), al=ALIGN_R)
         c = setc(ws, "G7", "Este mes", f=F(9.5, bold=True), fl=fill(C_INPUT_FILL), al=ALIGN_L)
         c.border = border_all(INPUT_SIDE)
-        dv = DataValidation(type="list", formula1="=Lst_PeriodosRapidos", allow_blank=False)
+        dv = DataValidation(type="list", formula1="Lst_PeriodosRapidos", allow_blank=False)
         dv.add("G7")
         ws.add_data_validation(dv)
 
@@ -1420,7 +1420,7 @@ form_fields = [
 setc(ws, "B11", "Nombre del negocio", f=F(10)); setc(ws, "C11", "Mi Negocio", f=F(10), fl=fill(C_INPUT_FILL))
 setc(ws, "B12", "Tipo de negocio", f=F(10)); setc(ws, "C12", "", f=F(10), fl=fill(C_INPUT_FILL))
 setc(ws, "B13", "Moneda", f=F(10)); setc(ws, "C13", "$", f=F(10), fl=fill(C_INPUT_FILL))
-dv_moneda = DataValidation(type="list", formula1="=Lst_Monedas", allow_blank=True)
+dv_moneda = DataValidation(type="list", formula1="Lst_Monedas", allow_blank=True)
 dv_moneda.add("C13")
 ws.add_data_validation(dv_moneda)
 for r in (11, 12, 13):
@@ -1524,9 +1524,20 @@ def add_dashboard_charts(sheet_key, is_demo):
     chart1.x_axis.title = None
     chart1.height = 8
     chart1.width = 28
-    cats = Reference(wb[data_sheet], min_col=1, min_row=int(trend_ref.split(":")[0][1:]), max_row=int(trend_ref.split(":")[1][1:]))
+    # NOTE (found during Excel-compatibility investigation): the header row of
+    # this block is trend_row0 itself (e.g. row 22 = "Periodo"/"Ventas"/
+    # "Ganancia"), with data starting the row after. The category reference
+    # must start one row past the header (data only, not the "Periodo" label
+    # itself); the value reference passed to add_data(titles_from_data=True)
+    # must START at the header row so it picks up "Ventas"/"Ganancia" as the
+    # series names -- both were previously off by one (categories included
+    # the header row as a data point; the value range started one row before
+    # the header, at a cell that isn't a header at all), so every series
+    # title referenced the wrong -- often blank -- cell.
+    trend_row0, trend_row1 = int(trend_ref.split(":")[0][1:]), int(trend_ref.split(":")[1][1:])
+    cats = Reference(wb[data_sheet], min_col=1, min_row=trend_row0 + 1, max_row=trend_row1)
     data = Reference(wb[data_sheet], min_col=2, max_col=3,
-                      min_row=int(trend_ref.split(":")[0][1:]) - 1, max_row=int(trend_ref.split(":")[1][1:]))
+                      min_row=trend_row0, max_row=trend_row1)
     chart1.add_data(data, titles_from_data=True)
     chart1.set_categories(cats)
     # Phase 10 polish: brand palette instead of Excel's generic chart-style
@@ -1546,9 +1557,12 @@ def add_dashboard_charts(sheet_key, is_demo):
     chart2.style = 10
     chart2.height = 8
     chart2.width = 13.5
+    # Same header/data alignment fix as chart 1 above: r0 IS the header row
+    # ("Producto"/"Ganancia total"); categories start one row after it, and
+    # the titles_from_data value range must start AT it, not one row before.
     r0, r1 = int(prod_ref.split(":")[0][1:]), int(prod_ref.split(":")[1][1:])
-    cats2 = Reference(wb[data_sheet], min_col=1, min_row=r0, max_row=r1)
-    data2 = Reference(wb[data_sheet], min_col=2, min_row=r0 - 1, max_row=r1)
+    cats2 = Reference(wb[data_sheet], min_col=1, min_row=r0 + 1, max_row=r1)
+    data2 = Reference(wb[data_sheet], min_col=2, min_row=r0, max_row=r1)
     chart2.add_data(data2, titles_from_data=True)
     chart2.set_categories(cats2)
     chart2.legend = None
@@ -1636,14 +1650,14 @@ wsP = wb[SH_PRODUCTOS]
 # NOTE (Phase 9 review fix): Categoría was documented (docs/02/03) as a
 # dropdown but the actual data validation was never wired up during the
 # Phase 5 build -- found by re-reading the shipped file, not the spec.
-dv_categoria = DataValidation(type="list", formula1="=Lst_Categorias", allow_blank=True,
+dv_categoria = DataValidation(type="list", formula1="Lst_Categorias", allow_blank=True,
                                showErrorMessage=True, error="Elegí una categoría de la lista.", errorTitle="Categoría inválida")
 dv_categoria.add(f"C{DATA_ROW_P}")
 wsP.add_data_validation(dv_categoria)
 for cl in ("D", "E", "G", "H", "I", "J"):  # Precio, Costo, Packaging, Envío, Publicidad, Otros
     dv_decimal_min(wsP, f"{cl}{DATA_ROW_P}", 0, MSG_NUM_GE0)
 dv_decimal_between(wsP, f"F{DATA_ROW_P}", 0, 1, MSG_PCT)
-dv_unique = DataValidation(type="custom", formula1=f'=COUNTIF(tbl_Productos[Producto],B{DATA_ROW_P})<=1',
+dv_unique = DataValidation(type="custom", formula1=f'COUNTIF(tbl_Productos[Producto],B{DATA_ROW_P})<=1',
                             allow_blank=True, showErrorMessage=True,
                             error="Ya existe un producto con este nombre. Elegí un nombre distinto para diferenciarlo.",
                             errorTitle="Nombre duplicado")
@@ -1666,14 +1680,14 @@ dv_decimal_min(wsG, f"E{DATA_ROW_G}", 0, MSG_NUM_GE0)
 
 # Objetivos
 wsO = wb[SH_OBJETIVOS]
-dv_first_of_month = DataValidation(type="custom", formula1=f"=DAY(B{DATA_ROW_O})=1",
+dv_first_of_month = DataValidation(type="custom", formula1=f"DAY(B{DATA_ROW_O})=1",
                                     allow_blank=True, showErrorMessage=True,
                                     error="Elegí el primer día del mes que querés planificar.",
                                     errorTitle="Período inválido")
 dv_first_of_month.add(f"B{DATA_ROW_O}")
 wsO.add_data_validation(dv_first_of_month)
 dv_unique_period = DataValidation(type="custom",
-                                   formula1=f"=COUNTIF(tbl_Objetivos[Periodo (Mes-Año)],B{DATA_ROW_O})<=1",
+                                   formula1=f"COUNTIF(tbl_Objetivos[Periodo (Mes-Año)],B{DATA_ROW_O})<=1",
                                    allow_blank=True, showErrorMessage=True,
                                    error="Ya definiste un objetivo para este mes — editá la fila existente.",
                                    errorTitle="Período duplicado")
