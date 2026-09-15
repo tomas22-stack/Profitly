@@ -29,6 +29,24 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.hyperlink import Hyperlink
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment, NamedStyle
+
+# CORRUPTION FIX (round 3): openpyxl's Font.__elements__ controls the order in
+# which <font> child elements are written to xl/styles.xml. Its built-in order
+# does not match the true ECMA-376 CT_Font schema sequence, so every font in
+# the workbook violated the schema (confirmed via Microsoft's own
+# DocumentFormat.OpenXml OpenXmlValidator: 35/35 fonts, all 5 Office format
+# versions). Correct order empirically verified three independent ways
+# (brute-force permutation testing against OpenXmlValidator, inspection of a
+# LibreOffice-native-authored font element, and targeted insertion testing):
+# b, i, sz, color, name, family, scheme, for the properties this build uses.
+# Elements this build never emits (strike, outline, shadow, condense, extend,
+# u, vertAlign, charset) are interpolated best-effort into the CT_Font
+# sequence and are not individually verified.
+from openpyxl.styles.fonts import Font as _Font
+_Font.__elements__ = (
+    'b', 'i', 'strike', 'outline', 'shadow', 'condense', 'extend',
+    'sz', 'u', 'vertAlign', 'color', 'name', 'charset', 'family', 'scheme',
+)
 from openpyxl.formatting.rule import DataBarRule, CellIsRule, FormulaRule
 from openpyxl.utils import get_column_letter, column_index_from_string
 from openpyxl.chart import LineChart, BarChart, Reference

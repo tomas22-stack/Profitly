@@ -2,7 +2,7 @@
 
 > Critical post-ship fix. The shipped `build/Profitly.xlsx` opened in Microsoft Excel with *"We found a problem with some content in 'Profitly.xlsx'. Do you want us to recover as much as we can?"* This document records the root cause, the fix, and how it was verified — found and fixed by inspecting the actual XLSX package, not assumed.
 >
-> **Update:** the round 1 fix (§2–§4 below) was real and necessary, but the prompt persisted after it — meaning there was more than one structural defect. §7 documents a second round of investigation and fixes. Both rounds are kept here rather than rewritten into one, since the round 1 finding is still accurate and still a prerequisite fix.
+> **Update:** the round 1 fix (§2–§4 below) was real and necessary, but the prompt persisted after it — meaning there was more than one structural defect. §7 documents a second round of investigation and fixes, which was also real but still not sufficient — the prompt persisted again. §8 documents a third round, this time escalating to Microsoft's own official `DocumentFormat.OpenXml` schema validator (the same technology family Excel's own compatibility checking is built on), which found and confirmed a genuine `CT_Font` element-ordering schema violation present in 100% of fonts, invisible to every less-strict tool used in rounds 1–2. All three rounds are kept here rather than rewritten into one, since each finding is still accurate and still a prerequisite fix.
 
 ---
 
@@ -133,4 +133,93 @@ Two independent, concrete, verifiable defects have now been found and fixed by d
 
 ---
 
-**Regenerated file:** `build/Profitly.xlsx` (rebuilt from `build/build_workbook.py` after both rounds of fixes).
+## 8. Round 3 — the prompt persisted again; the actual root cause, found with Microsoft's own validator
+
+After round 2, the user reported the repair prompt **still** appeared. Two real, confirmed defects had been fixed and neither was sufficient — meaning the remaining defect was of a kind that both LibreOffice's recalculation engine *and* a careful hand-audit against the visible OOXML spec were failing to catch. That pointed at something more subtle than the package-level checks in §4/§7.3 could surface: an actual **element sequence/schema violation** inside a part that is otherwise well-formed, present, and internally consistent — the kind of defect only a real schema-validating parser catches, which neither LibreOffice nor a hand-rolled `xml.etree` audit is.
+
+### 8.1 Escalating to Microsoft's own validator
+
+Two more independent tools were brought in specifically because they are stricter than anything used in rounds 1–2:
+
+- **Apache POI** (Java, `org.apache.poi:poi-ooxml:5.2.5`) — loaded the workbook and exercised cells, named ranges, hyperlinks, validations, tables, and charts. Passed cleanly. This ruled out a class of gross structural defects but, as it turned out, POI's reader is also more tolerant of element ordering than Excel is, so it did not catch the real bug either.
+- **Microsoft's own `DocumentFormat.OpenXml` SDK** (.NET, v3.0.2, installed via `dotnet-sdk-8.0` + NuGet specifically for this), using its `OpenXmlValidator` class. This is the same schema-validation technology family Excel's own file-compatibility checking is built on, and it is the first tool in this entire investigation with a real, complete, machine-checked copy of the CT_* element sequences OOXML actually requires.
+
+Run against the round-2 file across all 5 Office format versions (Office2007 through Microsoft365), it reported **35 schema errors — every single `<font>` definition in `xl/styles.xml`, on every format version** — a `Sch_InvalidChildElementOrder`-class error: the `<font>` element's children were present, individually valid, and referenced correctly everywhere else in the package, but written in the wrong sequence for the `CT_Font` complex type. This is exactly the class of defect none of the prior tools (LibreOffice, hand-rolled XML audit, Apache POI) are strict enough to catch, which is why it survived two rounds of otherwise-real fixes.
+
+### 8.2 Root cause: openpyxl's own `Font.__elements__` doesn't match the real schema
+
+openpyxl serializes each `<font>` element's children in the order given by the library's internal `Font.__elements__` class attribute:
+
+```python
+('name', 'charset', 'family', 'b', 'i', 'strike', 'outline', 'shadow',
+ 'condense', 'color', 'extend', 'sz', 'u', 'vertAlign', 'scheme')
+```
+
+This order does not match the true ECMA-376 `CT_Font` sequence. It is a latent bug in openpyxl itself, not an error introduced by this build's script logic — every font this build (or any openpyxl-based build) writes is affected identically, which is why the error rate was 35/35 (100%).
+
+### 8.3 Determining the correct order — three independent methods, all agreeing
+
+Since the exact schema sequence wasn't reliably in memory and the ECMA-376 spec text wasn't available to consult directly in this environment, the correct order was determined empirically, using the validator itself as the oracle, and cross-checked two more ways before trusting it:
+
+1. **Brute-force permutation testing.** Wrote a small .NET program that generated font elements in many candidate orders and ran each through `OpenXmlValidator`, searching for the one order that produces zero errors. This converged on a single valid order for the 7 elements this workbook actually emits: `b, i, sz, color, name, family, scheme`.
+2. **Native LibreOffice ground truth.** Independently, had LibreOffice itself author a styled font — via a StarBasic macro run headless, entirely bypassing openpyxl and this build's code path — and inspected the resulting `<font>` XML directly. LibreOffice's own native output used the identical order found in step 1, and validated with 0 errors.
+3. **Targeted insertion testing.** Separately re-tested where the `scheme` element specifically belongs relative to the other six, inserting it at every position in the sequence and validating each. Confirmed the same position found in step 1.
+
+All three methods agreed, giving high confidence in the order for the 7 elements this build uses. (Elements the build never emits — `strike`, `outline`, `shadow`, `condense`, `extend`, `u`, `vertAlign`, `charset` — were not individually tested this way; their positions in the fix below are best-effort interpolation into the `CT_Font` sequence, disclosed honestly rather than presented as verified, since they never appear in this workbook's actual output regardless.)
+
+### 8.4 The fix
+
+Monkey-patched `openpyxl.styles.fonts.Font.__elements__` at the top of `build/build_workbook.py`, immediately after `import openpyxl` and before any `Font(...)` object is constructed anywhere in the script:
+
+```python
+from openpyxl.styles.fonts import Font as _Font
+_Font.__elements__ = (
+    'b', 'i', 'strike', 'outline', 'shadow', 'condense', 'extend',
+    'sz', 'u', 'vertAlign', 'color', 'name', 'charset', 'family', 'scheme',
+)
+```
+
+This changes only the XML **serialization order** of `<font>` child elements — no font property, value, size, color, weight, or style was added, removed, or altered. It's a pure ordering fix.
+
+### 8.5 Verification
+
+**Schema validity (the actual defect this round targets):**
+
+| Check | Result |
+|---|---|
+| `xl/styles.xml` `<font>` element child order, direct inspection | ✅ every one of the 35 fonts now in `b → i → sz → color → name → family → scheme` order (or the applicable subset) |
+| Microsoft `OpenXmlValidator`, Office2007 | ✅ 0 errors |
+| Microsoft `OpenXmlValidator`, Office2010 | ✅ 0 errors |
+| Microsoft `OpenXmlValidator`, Office2013 | ✅ 0 errors |
+| Microsoft `OpenXmlValidator`, Office2016 | ✅ 0 errors |
+| Microsoft `OpenXmlValidator`, Microsoft365 | ✅ 0 errors |
+| **Total schema errors, all 5 format versions combined** | **✅ 0** (down from 35 × 5 = 175 in round 2) |
+
+This is the first point in the entire investigation where a real schema validator — as opposed to a lenient reader or a hand-audit against the parts of the spec that were checked — reports the package as fully valid.
+
+**Functional re-verification (identical method to §5/§7.4, re-run against the round-3 file):**
+
+| Check | Result |
+|---|---|
+| Formula errors | 0 across 1,071 formulas |
+| 25-case edge matrix | 25/25 pass, values identical to all prior runs — no regression |
+| Sheets | 19/19, same names/order |
+| Named ranges | 141 (unchanged) |
+| Tables | 4 (unchanged) |
+| Data validations | 63 (unchanged) |
+| Input cells editable | confirmed (e.g. `Productos!B13.protection.locked == False`) |
+| Calculated cells protected | confirmed (e.g. `Productos!K13.protection.locked == True`) |
+| Sheet/workbook protection | confirmed enabled on every sheet |
+| Pristine file loads via `openpyxl.load_workbook()` with warnings-as-errors | ✅ zero warnings |
+
+One process note: `recalc.py` rewrites its target file in place (LibreOffice resaves it), which would have silently replaced the pristine, validator-clean build with a LibreOffice round-tripped copy if run directly against `build/Profitly.xlsx`. This round, recalculation was run against a scratch copy instead, and the shipped file's checksum was confirmed unchanged after every verification step — the file shipped is the direct, untouched output of `build_workbook.py`, never LibreOffice-resaved.
+
+### 8.6 Where this leaves things, honestly
+
+This round found the first defect in the investigation confirmed against an actual schema-validating parser from the same technology family as Excel's own — not against a lenient reader (LibreOffice), a hand-rolled structural audit, or a more permissive independent library (Apache POI). All three of those passed the round-2 file cleanly; only Microsoft's own validator caught it. Combined with the two real defects fixed in rounds 1–2, this is now the most rigorously checked state the file has been in.
+
+It cannot be stated with 100% certainty that this is the *only* remaining defect, since no real Microsoft Excel is available in this environment to observe directly, and `OpenXmlValidator`, while authoritative on schema conformance, cannot per se guarantee it evaluates every single one of Excel's own internal compatibility checks (some of Excel's repair behavior is undocumented and not purely schema-based). But this round closes the gap between "checked with tools that are demonstrably too lenient" and "checked with the same class of validator Excel itself is built on," which is the strongest verification available without Excel itself. If the prompt still recurs, capturing Excel's own repair log (the specific part/feature it says it recovered, shown after clicking "Yes") is the fastest way to point directly at whatever remains, rather than another blind sweep.
+
+---
+
+**Regenerated file:** `build/Profitly.xlsx` (rebuilt from `build/build_workbook.py` after all three rounds of fixes: internal hyperlink relationships, data-validation formula syntax + chart data alignment, and font element ordering).

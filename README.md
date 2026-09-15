@@ -16,6 +16,6 @@ Following the phased build process defined in the product brief:
 - [x] **Phase 8 — QA**: [`docs/05-qa-results.md`](docs/05-qa-results.md) — all 25 edge cases pass
 - [x] **Phase 9 — Beginner-perspective review**: [`docs/06-beginner-review-and-polish.md`](docs/06-beginner-review-and-polish.md)
 - [x] **Phase 10 — Visual polish**: same doc, §3 — final QA rerun against the actual shipped file, all green
-- [x] **Excel compatibility fix**: [`docs/07-excel-compatibility-fix.md`](docs/07-excel-compatibility-fix.md) — the shipped file triggered Excel's repair prompt (invalid OPC relationships behind every internal navigation link); root-caused, fixed, and re-verified against the actual package
+- [x] **Excel compatibility fix**: [`docs/07-excel-compatibility-fix.md`](docs/07-excel-compatibility-fix.md) — the shipped file triggered Excel's repair prompt. Three rounds of root-causing against the actual package: (1) invalid OPC relationships behind internal navigation links, (2) malformed data-validation formulas + misaligned chart data ranges, (3) a `CT_Font` element-ordering schema violation on every font, caught only by Microsoft's own official `OpenXmlValidator`. All three fixed and re-verified; the file now validates with 0 schema errors across all 5 Office format versions (Office2007–Microsoft365)
 
 **Profitly is complete.**
